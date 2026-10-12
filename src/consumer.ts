@@ -1,4 +1,5 @@
 import { type JsMsg, StringCodec } from 'nats'
+import logger from './logger'
 import { recordIncomingPayload } from './payload-logger'
 import { handleProvisPaid } from './provis-paid'
 import { handleServiceClosed } from './service-closed'
@@ -30,5 +31,10 @@ export async function processMessage(msg: JsMsg): Promise<void> {
     case 'provis-free':
       await handleProvisPaid(msg)
       break
+    default:
+      // Unhandled subjects would otherwise never be acked and redeliver
+      // forever, holding the consumer's ack floor back.
+      logger.warn(`Unknown event type, terminating message: ${msg.subject}`)
+      msg.term()
   }
 }
