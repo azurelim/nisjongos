@@ -7,7 +7,15 @@ export interface SshConfig {
   privateKey?: string
   password?: string
   port?: number
+  /** Max time to establish the SSH connection (ms). */
+  readyTimeout?: number
+  /** Max time for the command to finish once connected (ms). */
+  commandTimeout?: number
 }
+
+// Must stay well under the NATS ack wait (30s) so the handler can still nak.
+const DEFAULT_READY_TIMEOUT_MS = 10_000
+const DEFAULT_COMMAND_TIMEOUT_MS = 15_000
 
 export function executeRemoteCommand(
   config: SshConfig,
@@ -15,13 +23,35 @@ export function executeRemoteCommand(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const conn = new Client()
-    const { host, username, privateKey, password, port = 22 } = config
+    const {
+      host,
+      username,
+      privateKey,
+      password,
+      port = 22,
+      readyTimeout = DEFAULT_READY_TIMEOUT_MS,
+      commandTimeout = DEFAULT_COMMAND_TIMEOUT_MS,
+    } = config
+
+    let commandTimer: ReturnType<typeof setTimeout> | undefined
+    const clearTimer = () => {
+      if (commandTimer) clearTimeout(commandTimer)
+    }
 
     conn
       .on('ready', () => {
         logger.info(`SSH connection established to ${host}`)
+        commandTimer = setTimeout(() => {
+          conn.destroy()
+          reject(
+            new Error(
+              `SSH command on ${host} timed out after ${commandTimeout}ms`,
+            ),
+          )
+        }, commandTimeout)
         conn.exec(command, (err, stream) => {
           if (err) {
+            clearTimer()
             conn.end()
             return reject(err)
           }
@@ -34,6 +64,7 @@ export function executeRemoteCommand(
               logger.info(
                 `SSH command closed with code ${code} and signal ${signal}`,
               )
+              clearTimer()
               conn.end()
               if (code !== 0) {
                 reject(
@@ -54,6 +85,7 @@ export function executeRemoteCommand(
         })
       })
       .on('error', (err) => {
+        clearTimer()
         logger.error(`SSH connection error: ${err.message}`)
         reject(err)
       })
@@ -63,6 +95,7 @@ export function executeRemoteCommand(
         username,
         privateKey,
         password,
+        readyTimeout,
       })
   })
 }
