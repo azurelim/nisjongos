@@ -1,10 +1,18 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { readFile, rm } from 'node:fs/promises'
 import { PAYLOAD_LOG_FILE } from './config'
 import { recordIncomingPayload } from './payload-logger'
 
 describe('recordIncomingPayload', () => {
   const testFile = PAYLOAD_LOG_FILE
+
+  beforeEach(async () => {
+    try {
+      await rm(testFile, { force: true })
+    } catch {
+      // ignore
+    }
+  })
 
   afterEach(async () => {
     try {

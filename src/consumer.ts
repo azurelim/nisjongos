@@ -1,4 +1,5 @@
 import { type JsMsg, StringCodec } from 'nats'
+import logger from './logger'
 import { recordIncomingPayload } from './payload-logger'
 import { handleProvisPaid } from './provis-paid'
 import { handleServiceClosed } from './service-closed'
@@ -29,6 +30,10 @@ export async function processMessage(msg: JsMsg): Promise<void> {
     case 'provis-paid':
     case 'provis-free':
       await handleProvisPaid(msg)
+      break
+    default:
+      logger.warn('Unhandled message subject', { subject: msg.subject })
+      msg.ack()
       break
   }
 }
